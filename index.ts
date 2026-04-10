@@ -3,11 +3,10 @@
  *
  * Each trace is an interactive html file whose trailing unterminated html-comment contains
  * one json object per line. To read the logs programmatically, strip everything up to that
- * final comment. To browse them interactively, open the html file directly in a browser.
- *
- * For development this source file reads `./opencode-trace.js` and inlines it into each html
- * logfile at write time. `npm run build` produces `dist/opencode-trace.ts`, where the same
- * viewer source has already been inserted into the placeholder in `PREAMBLE`.
+  * final comment. To browse them interactively, open the html file directly in a browser.
+  *
+ * The plugin loads `./viewer.js` at runtime and embeds it into each new html trace, while also
+ * preferring a sibling `viewer.js` if one exists next to the saved html file.
  */
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs"
 import { createHash } from "node:crypto"
@@ -29,10 +28,10 @@ const PREAMBLE = `<!DOCTYPE html>
         details>div {margin-left: 1.25em;}
         details[open]>summary output {display: none;}
     </style>
-    <script src="opencode-trace.js"></script>
+    <script src="viewer.js"></script>
     <script>
         if (window.buildNode === undefined) {
-          // {opencode-trace.js}
+          // {viewer.js}
         }
     </script>
 </head>
@@ -111,12 +110,10 @@ function write(id: string, name: string, row: Record<string, unknown>): void {
   )
   mkdirSync(root, { recursive: true })
   if (!existsSync(file)) {
-    const html = PREAMBLE.includes("// {opencode-trace.js}")
-      ? PREAMBLE.replace(
-          "// {opencode-trace.js}",
-          readFileSync(new URL("./opencode-trace.js", import.meta.url), "utf8"),
-        )
-      : PREAMBLE
+    const html = PREAMBLE.replace(
+      "// {viewer.js}",
+      readFileSync(new URL("./viewer.js", import.meta.url), "utf8"),
+    )
     appendFileSync(
       file,
       html,
@@ -459,7 +456,12 @@ async function tracedFetch(
   init?: Parameters<typeof globalThis.fetch>[1],
 ): Promise<Response> {
   const now = (): string => new Date().toISOString()
-  const error = (err: unknown) => err instanceof Error ? { _error: err.message, _stack: err.stack } : { _error: String(err) }
+  const error = (err: unknown): { _error: string; _stack?: string } =>
+    err instanceof Error
+      ? err.stack === undefined
+        ? { _error: err.message }
+        : { _error: err.message, _stack: err.stack }
+      : { _error: String(err) }
 
   const req = new Request(input, init)
   const session = req.headers.get("x-opencode-session") ?? req.headers.get("x-session-affinity") ?? req.headers.get("session_id") ?? undefined;
@@ -563,7 +565,7 @@ export default {
 // For opencode versions prior to 1.4, it doesn't get picked up automatically from the plugins
 // directory so you have to add this to your ~/.config/opencode/opencode.json
 //  "plugin": [
-//    "file:///path/to/.config/opencode/plugins/opencode-trace.ts"
+//    "file:///path/to/.config/opencode/plugins/index.ts"
 //  ]
 //
 // And it uses a different default export:

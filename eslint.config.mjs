@@ -8,7 +8,7 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,
   {
-    files: ["opencode-trace.ts"],
+    files: ["index.ts"],
     languageOptions: {
       parserOptions: {
         project: true,

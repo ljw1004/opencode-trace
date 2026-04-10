@@ -1,10 +1,36 @@
 {
-  "name": "opencode-trace",
-  "private": true,
+  "name": "@ljw1004/opencode-trace",
+  "version": "0.1.0",
+  "description": "OpenCode plugin that saves raw json LLM request+responses as jsonl in ~/opencode-trace, with built-in HTML interactive viewer",
+  "license": "MIT",
   "type": "module",
+  "exports": "./index.ts",
+  "main": "./index.ts",
+  "files": [
+    "index.ts",
+    "viewer.js",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ljw1004/opencode-trace.git"
+  },
+  "homepage": "https://github.com/ljw1004/opencode-trace#readme",
+  "bugs": {
+    "url": "https://github.com/ljw1004/opencode-trace/issues"
+  },
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "trace",
+    "llm"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
-    "build": "node build.mjs",
-    "lint": "eslint opencode-trace.ts",
+    "lint": "eslint index.ts",
     "typecheck": "tsc"
   },
   "devDependencies": {

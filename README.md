@@ -5,8 +5,13 @@ This opencode plugin lets you see the raw json requests made to the LLM, and the
 
 ## Installation
 
-1. Download https://raw.githubusercontent.com/ljw1004/opencode-trace/refs/heads/main/dist/opencode-trace.ts into ~/.config/opencode/plugins
-2. Restart opencode and use it
-3. You'll see each transcript stored in ~/opencode-trace
+Add the package to your OpenCode config:
 
-To uninstall, `rm ~/.config/opencode/plugins/opencode-trace.ts`
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": ["@ljw1004/opencode-trace"]
+}
+```
+
+Restart OpenCode and you'll see each transcript stored in `~/opencode-trace`.
