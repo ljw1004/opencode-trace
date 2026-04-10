@@ -15,3 +15,5 @@ Add the package to your OpenCode config:
 ```
 
 Restart OpenCode and you'll see each transcript stored in `~/opencode-trace`.
+
+That installation path by default uses `@latest`, which opencode currently does't refresh when latest changes. You can force a refresh with `rm -rf ~/.cache/opencode/packages/@ljw1004/opencode-trace@latest`
