@@ -32,6 +32,7 @@ function fromHTML(html) {
  * Escapes string for safe insertion into HTML
  */
 function esc(s) {
+  s = String(s ?? '');
   return s
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -51,7 +52,7 @@ function ts(data) {
  * Puts a string onto a single line and truncates to 80 chars, for display in INLINE part of a node
  */
 function short(s) {
-  return s.replace(/\n/g, ' ').slice(0, 80);
+  return String(s ?? '').replace(/\n/g, ' ').slice(0, 80);
 }
 
 /**
@@ -63,10 +64,10 @@ function contentText(contents) {
   if (!Array.isArray(contents)) return JSON.stringify(contents ?? '');
   let r = [];
   for (const c of contents ?? []) {
-    if (c.type === 'input_text') r.push(c.text);
-    else if (c.type === 'output_text') r.push(c.text);
-    else if (c.type === 'text') r.push(c.text);
-    else r.push(`[${c.type}]`);
+    const type = c && typeof c === 'object' ? c.type : undefined;
+    const text = c && typeof c === 'object' ? c.text : c;
+    if (type === 'input_text' || type === 'output_text' || type === 'text') r.push(String(text ?? ''));
+    else r.push(`[${String(type ?? '?')}]`);
   }
   return r.join('\n');
 }
@@ -91,7 +92,7 @@ function renderPayload(elements) {
     } else if (e.type === 'input_text' || e.type === 'output_text' || e.type === 'text') {
       payload.push({
         [TITLE]: `${payload.length}: ${e.type}: `,
-        [INLINE]: esc(short(e.text)),
+        [INLINE]: esc(short(String(e.text ?? ''))),
         body: e.text,
       });
 
@@ -131,7 +132,9 @@ function renderPayload(elements) {
 
 /**
  * Renders a node in the tree.
- * If it looks like a REQUEST or RESPONSE payload (has ._kind property) then renders it conveniently.
+ * If it looks like a REQUEST or RESPONSE payload (has ._kind property) then pretty-prints it.
+ * The goal of this pretty-printing is not to be 100% faithful; instead it's solely to surface
+ * to the users some of the most important lines, for their attention.
  * Otherwise, renders primtives, objects, arrays in the obvious way.
  */
 function render(data, label) {
@@ -162,7 +165,7 @@ function render(data, label) {
     const raw = {...data};
     return {
       [TITLE]: `[${esc(ts(data))}] <b>ERROR${id}${purpose}</b> `,
-      [INLINE]: esc(short(data._error ?? '')),
+      [INLINE]: esc(short(data._error)),
       body: [
         data._error ?? '???',
         ...(data._stack ? [{[TITLE]: 'stack', body: data._stack}] : []),

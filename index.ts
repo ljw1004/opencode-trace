@@ -75,7 +75,7 @@ function extractPromptFromRequestBody(v: Record<string, unknown>): string | unde
     return undefined
   }
   const content = (v: unknown): string | undefined => {
-    if (typeof v === "string") return v
+    if (typeof v === "string") return usable(v)
     if (!Array.isArray(v)) return undefined
     for (const part of v) {
       const found = text(part)
@@ -97,35 +97,42 @@ function extractPromptFromRequestBody(v: Record<string, unknown>): string | unde
 }
 
 /**
- * Appends one row to the session logfile.
- * If this is the first row for the session, also chooses the filename and writes the html preamble.
- * Side effects: may create directories, create a logfile, mutate `files`, and append to disk.
+ * Appends one row to the session logfile. If logging fails, them skips silently.
+ * Session logfiles are like `~/opencode-trace/2024.6.10 15.30.45 why is the sky blue.html`
+ * In the vanishingly rare case of filename collision (because a user asked two different sessions
+ * the same prompt at the exact same second) then there'll be a clash, and that's the user's fault:
+ * we tradeoff theoretical perfection for user convenience in the common case.
  */
-function write(id: string, name: string, row: Record<string, unknown>): void {
-  const prev = files.get(id)
-  const d = new Date()
-  const file = prev ?? path.join(
-    root,
-    `${d.getFullYear()}.${d.getMonth() + 1}.${d.getDate()} ${d.getHours()}.${d.getMinutes()}.${d.getSeconds()} ${name}.html`,
-  )
-  mkdirSync(root, { recursive: true })
-  if (!existsSync(file)) {
-    const html = PREAMBLE.replace(
-      "// {viewer.js}",
-      () => readFileSync(new URL("./viewer.js", import.meta.url), "utf8"),
+function writeNoThrow(id: string, name: string, row: Record<string, unknown>): void {
+  try {
+    const prev = files.get(id)
+    const d = new Date()
+    const file = prev ?? path.join(
+      root,
+      `${d.getFullYear()}.${d.getMonth() + 1}.${d.getDate()} ${d.getHours()}.${d.getMinutes()}.${d.getSeconds()} ${name}.html`,
     )
-    appendFileSync(
-      file,
-      html,
-    )
+    mkdirSync(root, { recursive: true })
+    if (!existsSync(file)) {
+      const html = PREAMBLE.replace(
+        "// {viewer.js}",
+        () => readFileSync(new URL("./viewer.js", import.meta.url), "utf8"),
+      )
+      appendFileSync(
+        file,
+        html,
+      )
+    }
+    files.set(id, file)
+    appendFileSync(file, `${JSON.stringify(row).replace(/-->/g, "--\\u003e")}\n`)
+  } catch {
+    // Intentionally swallow tracing I/O failures so plugin logging can't crash OpenCode.
   }
-  files.set(id, file)
-  appendFileSync(file, `${JSON.stringify(row).replace(/-->/g, "--\\u003e")}\n`)
 }
 
 /**
- * Given two json values, returns a bool for whether they are identical, plus a representation
- * of the difference intended for humans to read.
+ * Given two json values, returns a bool for whether they are identical, plus a
+ * (lossy) representation of the difference intended for humans to read, which
+ * still roughly captures the shape even of unchanged objects.
  *
  * The representation always has the same type as `next`.
  *
@@ -478,6 +485,10 @@ async function tracedFetch(
   })()
   const title = isRecord(raw) && typeof raw._body !== "string" ? extractPromptFromRequestBody(raw) : undefined
   const purpose = isRecord(raw) && Array.isArray(raw.tools) && raw.tools.length > 0 ? '' : '[meta]';
+  // The purpose field is "[meta]" for LLM requests that appear to be not part of the conversation, e.g. "generate a title".
+  // I tried a bunch of heuristics, and this one "no tools" was the one that worked best across a variety of models.
+  // We calculate it here based on the request, and store it on both request and response, since otherwise
+  // there are no reliable indicators on the response jsonl for our viewer to key off.
   const seq = (ids.get(session) ?? 0) + 1
   ids.set(session, seq)
   const common = { _id: seq, _purpose: purpose, _url: req.url }
@@ -493,7 +504,7 @@ async function tracedFetch(
   const requestNext = raw as object
   const [requestRow] = delta(prevs.get(requestKey), requestNext)
   prevs.set(requestKey, requestNext)
-  write(session, name, {
+  writeNoThrow(session, name, {
     ...(requestRow as Record<string, unknown>),
     ...common,
     _kind: "request",
@@ -501,7 +512,7 @@ async function tracedFetch(
   })
 
   const res = await orig!(req).catch((err) => {
-    write(session, name, {
+    writeNoThrow(session, name, {
       ...common,
       _kind: "error",
       _ts: now(),
@@ -526,7 +537,7 @@ async function tracedFetch(
       const responseKey = `${session}\n${req.method}\n${req.url}\nresponse\n${purpose}`
       const [responseRow] = delta(prevs.get(responseKey), responseNext)
       prevs.set(responseKey, responseNext)
-      write(session, name, {
+      writeNoThrow(session, name, {
         ...(responseRow as Record<string, unknown>),
         ...common,
         _kind: "response",
@@ -534,7 +545,7 @@ async function tracedFetch(
       })
     })
     .catch((err) => {
-      write(session, name, {
+      writeNoThrow(session, name, {
         ...common,
         _kind: "error",
         _ts: now(),
