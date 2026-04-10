@@ -112,7 +112,7 @@ function write(id: string, name: string, row: Record<string, unknown>): void {
   if (!existsSync(file)) {
     const html = PREAMBLE.replace(
       "// {viewer.js}",
-      readFileSync(new URL("./viewer.js", import.meta.url), "utf8"),
+      () => readFileSync(new URL("./viewer.js", import.meta.url), "utf8"),
     )
     appendFileSync(
       file,
@@ -465,7 +465,7 @@ async function tracedFetch(
 
   const req = new Request(input, init)
   const session = req.headers.get("x-opencode-session") ?? req.headers.get("x-session-affinity") ?? req.headers.get("session_id") ?? undefined;
-  if (session === undefined) return orig!(input,init);
+  if (session === undefined) return orig!(req);
 
   const text = await req.clone().text().catch(() => "")
   const raw = ((): Record<string, unknown> => {
