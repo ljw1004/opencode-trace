@@ -136,8 +136,8 @@ function renderPayload(elements) {
  */
 function render(data, label) {
   const deltaField = (key) => data[key] ?? data[`${key}+`] ?? data[`${key}-`] ?? data[`*${key}`];
-  const id = data?._id !== undefined ? ` #${data._id}` : '';
-  const purpose = data?._purpose ? ` ${data._purpose}` : '';
+  const id = data?._id !== undefined ? ` #${esc(String(data._id))}` : '';
+  const purpose = data?._purpose ? ` ${esc(String(data._purpose))}` : '';
   if (data?.[TITLE] !== undefined) {
     return data;
   } else if (data?._kind === 'request') {
