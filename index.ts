@@ -544,35 +544,24 @@ async function tracedFetch(
   return res
 }
 
-export default {
-  id: "ljw.opencode-trace",
-  async server(): Promise<object> {
-    // OpenCode loads this module with dynamic import() when plugin state is initialized for
-    // an instance/directory. In current OpenCode this module import is normally cached, so
-    // top-level state like `orig`, `files`, and `prevs` survives repeated hook initialization.
-    //
-    // OpenCode then calls `server()` when it initializes this plugin's server hooks for that
-    // instance. That can happen more than once per process across instance reload/dispose, so
-    // the fetch patch must be guarded even though the module itself is usually only loaded once.
-    if (!orig) {
-      orig = globalThis.fetch.bind(globalThis)
-      globalThis.fetch = tracedFetch
-    }
-    return {}
-  },
-}
+/* Plugin model:
+ * - This module is loaded with dynamic import() when plugin state is initialized for an instance/directory.
+ *   The module import is normally cached, so our top-level state like `orig` survives repeated hook initialization
+ * - Opencode calls `default.server()` when it initializes this plugin's server hooks for that instance.
+ *   This can happen more than once per process across instance reload/dispose, which is why our fetch()
+ *   patch is guarded even though the module itself is loaded only once.
+ * - Opencode v1.3 has a single unified process for both TUI and server, so its plugin entrypoint `default` is just a function.
+ * - Opencode v1.4 has two separate entrypoints, `default.tui()` and `default.server()`
+ */
+const main: (() => Promise<object>) & {id?: unknown, server?: unknown} = async () => {
+  if (!orig) {
+    orig = globalThis.fetch.bind(globalThis);
+    globalThis.fetch = tracedFetch;
+  }
+  return {};
+};
 
-// For opencode versions prior to 1.4, it doesn't get picked up automatically from the plugins
-// directory so you have to add this to your ~/.config/opencode/opencode.json
-//  "plugin": [
-//    "file:///path/to/.config/opencode/plugins/index.ts"
-//  ]
-//
-// And it uses a different default export:
-// export default async function opencodeTracePlugin() {
-//   if (!orig) {
-//     orig = globalThis.fetch.bind(globalThis);
-//     globalThis.fetch = tracedFetch;
-//   }
-//   return {}
-// }
+const entrypoint = main; // opencode v1.3 expects default export to be a function
+entrypoint.id = "ljw1004.opencode-trace";
+entrypoint.server = main; // opencode v1.4 expects default export to be an object, with server() being what executes
+export default entrypoint;
