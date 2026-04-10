@@ -55,61 +55,67 @@ function short(s) {
 }
 
 /**
- * Interprets the content array of from an OpenAI payload into a string for display.
+ * Interprets a message-content array into text for display.
  * If we're given undefined, returns an empty string.
  */
-function content(contents) {
+function contentText(contents) {
   if (typeof contents === 'string') return contents;
+  if (!Array.isArray(contents)) return JSON.stringify(contents ?? '');
   let r = [];
   for (const c of contents ?? []) {
     if (c.type === 'input_text') r.push(c.text);
     else if (c.type === 'output_text') r.push(c.text);
+    else if (c.type === 'text') r.push(c.text);
     else r.push(`[${c.type}]`);
   }
   return r.join('\n');
 }
 
 /**
- * Renders a sequence of elements from an OpenAI payload: messages, function_calls, function_call_outputs.
+ * Renders a sequence of payload elements from either OpenAI or Anthropic payloads.
  */
 function renderPayload(elements) {
+  if (!Array.isArray(elements)) return [];
   const payload = [];
   for (const e of elements) {
     if (e === '...') {
       payload.push({[TITLE]: 'Added...'});
     } else if (e === '---') {
       payload.push({[TITLE]: 'Removed...'});
-    } else if (e.type === 'message') {
+    } else if (e.type === 'message' || (e.type === undefined && e.role !== undefined && e.content !== undefined)) {
       payload.push({
         [TITLE]: `${payload.length}: message(${esc(e.role)}): `,
-        [INLINE]: esc(short(content(e.content))),
-        body: content(e.content),
+        [INLINE]: esc(short(contentText(e.content))),
+        body: contentText(e.content),
       });
-    } else if (e.type === 'input_text' || e.type === 'output_text') {
+    } else if (e.type === 'input_text' || e.type === 'output_text' || e.type === 'text') {
       payload.push({
         [TITLE]: `${payload.length}: ${e.type}: `,
         [INLINE]: esc(short(e.text)),
         body: e.text,
       });
 
-    } else if (e.type === 'function_call_output') {
+    } else if (e.type === 'function_call_output' || e.type === 'tool_result') {
+      const result = (e.type === 'function_call_output') ? 
+      (typeof e.output === 'string' ? e.output : JSON.stringify(e.output ?? ''))
+      : typeof e.content === 'string' ? e.content : contentText(e.content);
       payload.push({
         [TITLE]: `${payload.length}: `,
-        [INLINE]: `function_call_output: ${esc(short(e.output))}`,
+        [INLINE]: `${esc(e.type)}: ${esc(short(result))}`,
         body: e,
       });
-    } else if (e.type === 'function_call') {
-      let arg;
+    } else if (e.type === 'function_call' || e.type === 'tool_use') {
+      let arg = "";
       try {
-        const j = JSON.parse(e.arguments);
-        arg = j.cmd ?? j.pattern;
-        arg = `"${esc(short(arg))}"`;
+        const raw = e.type === 'function_call' ? JSON.parse(e.arguments) : e.input;
+        const rawArg = raw?.cmd ?? raw?.pattern ?? raw;
+        arg = typeof rawArg === 'string' ? rawArg : JSON.stringify(rawArg ?? '');
       } catch (e) {
         arg = '...';
       }
       payload.push({
         [TITLE]: `${payload.length}: `,
-        [INLINE]: `function_call: ${esc(e.name)}(${esc(short(arg))})`,
+        [INLINE]: `${esc(e.type)}: ${esc(e.name ?? '???')}(${esc(short(arg))})`,
         body: e,
       });
     } else {
@@ -129,24 +135,13 @@ function renderPayload(elements) {
  * Otherwise, renders primtives, objects, arrays in the obvious way.
  */
 function render(data, label) {
+  const deltaField = (key) => data[key] ?? data[`${key}+`] ?? data[`${key}-`] ?? data[`*${key}`];
   const id = data?._id !== undefined ? ` #${data._id}` : '';
   const purpose = data?._purpose ? ` ${data._purpose}` : '';
   if (data?.[TITLE] !== undefined) {
     return data;
   } else if (data?._kind === 'request') {
-    const input = data['input'] ?? data['input+'] ?? data['input-'] ?? data['*input'] ?? [];
-    // OpenCode request bodies can mix message wrappers like
-    // `{role:'user', content:[{type:'input_text', text:'...'}]}` with already-typed items like
-    // `{type:'function_call', ...}`. Flatten wrapper objects to their `content` items so `payload`
-    // is always a list of typed entries like `{type:'input_text', ...}` or `{type:'function_call', ...}`.
-    const payload = input.flatMap(e =>
-      e && typeof e === 'object' && !Array.isArray(e) && e.type === undefined && Array.isArray(e.content)
-        ? e.content
-        : e && typeof e === 'object' && !Array.isArray(e) && e.type === undefined && typeof e.content === 'string'
-          ? [{type: 'input_text', text: e.content}]
-        : [e],
-    );
-    const rendered = renderPayload(payload);
+    const rendered = renderPayload(deltaField('input') ?? deltaField('messages'));
     const raw = {...data};
     delete raw._kind;
     return {
@@ -155,9 +150,7 @@ function render(data, label) {
       open: true,
     };
   } else if (data?._kind === 'response') {
-    const payload = renderPayload(
-      data['output'] ?? data['output+'] ?? data['output-'] ?? data['*output'] ?? [],
-    );
+    const payload = renderPayload(deltaField('output') ?? deltaField('content'));
     const raw = {...data};
     delete raw._kind;
     return {
